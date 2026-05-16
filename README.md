@@ -118,11 +118,19 @@ bharatlearn-ai/
 
 | Version | Best For | Features |
 |---------|----------|----------|
-| **app_simple.py**  | Learning, Interviews | Clean code, 5 dependencies |
+| **app_simple.py** ⭐ | Learning, Interviews | Clean code, 5 dependencies |
 | **app.py** | Understanding basics | Original implementation |
-| **app_with_langchain.py** | Production | Semantic search, FAISS, source citations |
+| **app_with_langchain.py** | Production | Semantic search, **ChromaDB**, source citations |
 
 **Recommendation:** Start with `app_simple.py`
+
+### Advanced Version Features (app_with_langchain.py)
+
+The advanced version includes:
+- **ChromaDB Vector Store** - Persistent vector database for semantic search
+- **Page Number Citations** - Track and display source page numbers  
+- **LangChain Integration** - Industry-standard RAG architecture
+- **Semantic Search** - Find relevant content based on meaning, not just keywords
 
 ---
 

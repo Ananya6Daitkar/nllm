@@ -1,33 +1,26 @@
-#BharatLearn AI - Enhanced with LangChain
-#Multilingual Learning Assistant with RAG Pipeline
+# BharatLearn AI - Enhanced with LangChain + ChromaDB
+# Multilingual Learning Assistant with RAG Pipeline
 
-
-# importing all the libraries
 import streamlit as st
 import os
+import json
 from dotenv import load_dotenv
 import google.generativeai as genai
 from PyPDF2 import PdfReader
 from gtts import gTTS
 import tempfile
-import base64
 
 # LangChain imports
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain_community.vectorstores import FAISS
+from langchain_community.vectorstores import Chroma
 
-# load environment variables from .env file
 load_dotenv()
-
-# get the Google API key from environment
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# configure Google Gemini AI with the API key
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
 
-# define the supported languages with their codes
 LANGUAGES = {
     "English": "en",
     "Hindi": "hi", 
@@ -36,564 +29,440 @@ LANGUAGES = {
     "Telugu": "te"
 }
 
-# extracting text from pdf file with LangChain text splitter
+# Extract PDF with page numbers
 def extract_and_chunk_pdf(pdf_file):
-    """
-    Extract text from PDF and split into chunks using LangChain
-    """
-    # create a PDF reader object
     pdf_reader = PdfReader(pdf_file)
+    full_text = ""
+    chunks_with_metadata = []
     
-    # initialize empty string to store text
-    text = ""
+    for page_num, page in enumerate(pdf_reader.pages, start=1):
+        page_text = page.extract_text()
+        full_text += page_text
+        
+        # Split page into chunks
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200
+        )
+        page_chunks = text_splitter.split_text(page_text)
+        
+        # Add page number to each chunk
+        for chunk in page_chunks:
+            chunks_with_metadata.append({
+                "text": chunk,
+                "page": page_num
+            })
     
-    # loop through all pages and extract text
-    for page in pdf_reader.pages:
-        text += page.extract_text()
-    
-    # use LangChain's text splitter for intelligent chunking
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
-        length_function=len
-    )
-    
-    chunks = text_splitter.split_text(text)
-    
-    return text, chunks
+    return full_text, chunks_with_metadata
 
-# create vector store using LangChain
-def create_vector_store(text_chunks):
-    """
-    Create FAISS vector store from text chunks
-    """
-    # create embeddings using Google's embedding model
+# Create ChromaDB vector store
+def create_vector_store(chunks_with_metadata):
     embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
+        model="models/gemini-embedding-001",
         google_api_key=GOOGLE_API_KEY
     )
     
-    # create vector store
-    vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
+    texts = [chunk["text"] for chunk in chunks_with_metadata]
+    metadatas = [{"page": chunk["page"]} for chunk in chunks_with_metadata]
+    
+    vector_store = Chroma.from_texts(
+        texts=texts,
+        embedding=embeddings,
+        metadatas=metadatas
+    )
     
     return vector_store
 
-# asking question using LangChain - SIMPLIFIED
+# Q&A with page number citations - Returns clean text
 def ask_question_langchain(question, vector_store, language):
-    """
-    Use LangChain's vector store for semantic search and Gemini for Q&A
-    """
-    # create the LLM
     llm = ChatGoogleGenerativeAI(
         model="gemini-flash-latest",
         google_api_key=GOOGLE_API_KEY,
-        temperature=0.3
+        temperature=0.7
     )
     
-    # get relevant documents using semantic search
     retriever = vector_store.as_retriever(search_kwargs={"k": 3})
     relevant_docs = retriever.invoke(question)
     
-    # combine context from relevant documents
     context = "\n\n".join([doc.page_content for doc in relevant_docs])
+    page_numbers = [doc.metadata.get("page", "Unknown") for doc in relevant_docs]
     
-    # create prompt
-    prompt = f"""You are a helpful educational assistant. Answer the question based ONLY on the provided context.
-Answer in {language}.
+    prompt = f"""You are a helpful educational assistant. Answer the question based on the context provided.
 
-Context:
+Context from the document:
 {context}
 
 Question: {question}
 
 Instructions:
-- If the answer is not in the context, say "I cannot find this information in the document."
-- Be clear and educational
 - Answer in {language}
+- Write naturally in paragraphs like a teacher explaining
+- DO NOT use JSON format
+- DO NOT use structured lists unless necessary
+- Be conversational and clear
+- If the answer is not in the context, say "I cannot find this information in the document"
+- Mention that the information is from pages {page_numbers}
 
-Answer:"""
+Provide a clear, natural answer:"""
     
-    # get response from LLM
     response = llm.invoke(prompt)
     
     return response.content, relevant_docs
 
-# generating MCQs from PDF content
-def create_mcqs(pdf_text, language):
-    """
-    This function generates 10 multiple choice questions from the PDF content
-    """
-    # create the Gemini AI model
+# Generate MCQs - Simple text format that works
+def create_mcqs_json(pdf_text, language):
     model = genai.GenerativeModel('gemini-flash-latest')
     
-    # use only first 3000 characters to avoid token limits
-    short_text = pdf_text[:3000]
-    
-    # create the prompt for MCQ generation
     prompt = f"""Create 10 multiple choice questions from this text in {language}.
 
-Text:
-{short_text}
+Text: {pdf_text[:3000]}
 
 Format each question EXACTLY like this:
-Q1: [Question text here]
-A) [First option]
-B) [Second option]
-C) [Third option]
-D) [Fourth option]
-Correct Answer: A
+Q1: What is photosynthesis?
+A) Process of eating
+B) Process of making food
+C) Process of breathing
+D) Process of sleeping
+Correct Answer: B
 
-Create all 10 questions now:"""
-    
-    # generate the MCQs from AI
-    response = model.generate_content(prompt)
-    
-    # parse the response text into structured format
-    return parse_mcq_text(response.text)
+Q2: Where does photosynthesis occur?
+A) Roots
+B) Stem
+C) Leaves
+D) Flowers
+Correct Answer: C
 
-# parsing MCQ text into structured format
-def parse_mcq_text(text):
-    """
-    This function converts the MCQ text into a list of question dictionaries
-    """
-    # initialize empty list to store questions
+Now create 10 questions following this EXACT format:"""
+    
+    try:
+        response = model.generate_content(prompt)
+        mcqs = parse_mcq_text_to_json(response.text)
+        if len(mcqs) > 0:
+            return mcqs
+        else:
+            st.error("Could not parse MCQs. Please try again.")
+            return []
+    except Exception as e:
+        st.error(f"MCQ generation error: {str(e)}")
+        return []
+
+# Fallback parser
+def parse_mcq_text_to_json(text):
     questions = []
-    
-    # split the text into lines
     lines = text.split('\n')
+    current_q = None
+    current_opts = []
+    current_ans = None
     
-    # initialize variables to track current question
-    current_question = None
-    current_options = []
-    current_answer = None
-    
-    # loop through each line
     for line in lines:
-        # remove extra spaces
         line = line.strip()
         
-        # check if line starts with Q (question line)
         if line.startswith('Q') and ':' in line:
-            # save the previous question if it's complete
-            if current_question and len(current_options) == 4 and current_answer:
+            if current_q and len(current_opts) == 4 and current_ans:
                 questions.append({
-                    "question": current_question,
-                    "options": current_options,
-                    "answer": current_answer
+                    "question": current_q,
+                    "options": current_opts,
+                    "correct_answer": current_ans,
+                    "explanation": ""
                 })
-            
-            # start a new question
-            current_question = line.split(':', 1)[1].strip()
-            current_options = []
-            current_answer = None
+            current_q = line.split(':', 1)[1].strip()
+            current_opts = []
+            current_ans = None
         
-        # check if line starts with A), B), C), or D) (option line)
         elif line.startswith(('A)', 'B)', 'C)', 'D)')):
-            # extract the option text
-            option = line[2:].strip()
-            current_options.append(option)
+            current_opts.append(line)
         
-        # check if line contains the correct answer
         elif 'Answer:' in line:
-            # extract the answer letter
-            answer = line.split(':')[-1].strip().upper()
-            if answer in ['A', 'B', 'C', 'D']:
-                current_answer = answer
+            ans = line.split(':')[-1].strip().upper()
+            if ans in ['A', 'B', 'C', 'D']:
+                current_ans = ans
     
-    # save the last question
-    if current_question and len(current_options) == 4 and current_answer:
+    if current_q and len(current_opts) == 4 and current_ans:
         questions.append({
-            "question": current_question,
-            "options": current_options,
-            "answer": current_answer
+            "question": current_q,
+            "options": current_opts,
+            "correct_answer": current_ans,
+            "explanation": ""
         })
     
-    # return maximum 10 questions
     return questions[:10]
 
-# generating audio summary of PDF - FIXED VERSION
+# Audio summary - Fixed version
 def create_audio_summary(pdf_text, language):
-    """
-    This function creates an audio summary of the PDF content
-    """
     try:
-        # create the Gemini AI model
         model = genai.GenerativeModel('gemini-flash-latest')
         
-        # use only first 4000 characters
-        short_text = pdf_text[:4000]
-        
-        # create the prompt for summary generation
-        prompt = f"""Summarize this text in 250 words in {language}. Make it suitable for audio listening.
+        prompt = f"""Create a clear 250-word summary in {language} suitable for audio listening.
 
-Text:
-{short_text}
+Text: {pdf_text[:4000]}
 
-Summary:"""
+Write a natural, flowing summary:"""
         
-        # generate the summary from AI
         response = model.generate_content(prompt)
         summary = response.text
         
-        # get the language code for text-to-speech
-        lang_code = LANGUAGES[language]
+        # Get language code
+        lang_code = LANGUAGES.get(language, "en")
         
-        # create text-to-speech object
+        # Create audio
         tts = gTTS(text=summary, lang=lang_code, slow=False)
         
-        # create a temporary file to save audio
+        # Save to temp file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
         temp_filename = temp_file.name
-        temp_file.close()
+        temp_file.close()  # Close before saving
         
-        # save the audio to temporary file
         tts.save(temp_filename)
         
-        # read the audio file as bytes
+        # Read audio bytes
         with open(temp_filename, "rb") as f:
             audio_bytes = f.read()
         
-        # delete the temporary file
-        os.unlink(temp_filename)
+        # Clean up temp file
+        try:
+            os.unlink(temp_filename)
+        except:
+            pass
         
-        # return the audio bytes and summary text
         return audio_bytes, summary
-    
+        
     except Exception as e:
         st.error(f"Audio generation error: {str(e)}")
+        import traceback
+        st.error(traceback.format_exc())
         return None, None
 
-# Streamlit page configuration
+# Streamlit UI
 st.set_page_config(
-    page_title="BharatLearn AI - Enhanced",
-    page_icon="📚",
+    page_title="BharatLearn AI",
+    page_icon=":books:",
     layout="wide"
 )
 
-# custom CSS for styling
 st.markdown("""
 <style>
-    .main {
-        background-color: #ffffff;
-    }
-    h1 {
-        color: #1a73e8;
-        font-weight: 400;
-    }
+    .main { background-color: #f8f9fa; }
+    h1 { color: #2c3e50; font-weight: 700; }
     .stButton>button {
-        background-color: #1a73e8;
+        background-color: #2c3e50;
         color: white;
-        border-radius: 4px;
-        padding: 0.5rem 1rem;
-        border: none;
+        border-radius: 6px;
+        padding: 0.6rem 1.2rem;
+        transition: all 0.2s;
     }
     .stButton>button:hover {
-        background-color: #1557b0;
+        background-color: #34495e;
     }
-    .feature-badge {
-        background-color: #e8f0fe;
-        color: #1a73e8;
-        padding: 0.25rem 0.5rem;
-        border-radius: 4px;
-        font-size: 0.8rem;
-        font-weight: 500;
+    .feature-box {
+        background: white;
+        padding: 2rem;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+        margin-bottom: 1rem;
+        height: 100%;
+    }
+    .feature-box h3 {
+        color: #2c3e50;
+        font-size: 1.2rem;
+        font-weight: 600;
+        margin-bottom: 0.8rem;
+    }
+    .feature-box p {
+        color: #5a6c7d;
+        line-height: 1.6;
+        margin: 0;
+    }
+    .info-box {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border-left: 4px solid #2c3e50;
+        margin-top: 2rem;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# main title
-st.title("📚 BharatLearn AI - Enhanced")
-st.markdown("**Powered by LangChain & Google Gemini** | *Multilingual Learning Assistant*")
+st.title("BharatLearn AI")
+st.markdown("**Powered by LangChain + ChromaDB + Google Gemini**")
+st.markdown("---")
 
-# check if API key is configured
 if not GOOGLE_API_KEY:
-    st.error("⚠️ Please add GOOGLE_API_KEY to your .env file")
-    st.info("Get your free API key from: https://makersuite.google.com/app/apikey")
+    st.error("Add GOOGLE_API_KEY to .env file")
     st.stop()
 
-# initialize session state variables to store data across reruns
+# Session state
 if 'pdf_text' not in st.session_state:
     st.session_state.pdf_text = None
-
-if 'text_chunks' not in st.session_state:
-    st.session_state.text_chunks = None
-
 if 'vector_store' not in st.session_state:
     st.session_state.vector_store = None
-
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
-
 if 'mcqs' not in st.session_state:
     st.session_state.mcqs = None
-
 if 'audio' not in st.session_state:
     st.session_state.audio = None
+if 'audio_text' not in st.session_state:
+    st.session_state.audio_text = None
 
-if 'audio_summary_text' not in st.session_state:
-    st.session_state.audio_summary_text = None
-
-# sidebar for PDF upload and settings
+# Sidebar
 with st.sidebar:
-    # PDF upload section
-    st.header("📄 Upload PDF")
+    st.header("Upload PDF")
     
-    # file uploader widget
-    pdf_file = st.file_uploader("Choose a PDF file", type="pdf")
+    pdf_file = st.file_uploader("Choose PDF", type="pdf")
     
-    # process PDF button
     if pdf_file:
-        if st.button("🚀 Process PDF with LangChain"):
-            # show loading spinner
-            with st.spinner("Processing with LangChain..."):
+        if st.button("Process PDF"):
+            with st.spinner("Processing with ChromaDB..."):
                 try:
-                    # extract text and create chunks
                     text, chunks = extract_and_chunk_pdf(pdf_file)
-                    
-                    # store text and chunks in session state
                     st.session_state.pdf_text = text
-                    st.session_state.text_chunks = chunks
-                    
-                    # create vector store
                     st.session_state.vector_store = create_vector_store(chunks)
-                    
-                    # show success message
-                    st.success(f"✅ PDF processed successfully!")
-                    st.info(f"📊 Created {len(chunks)} chunks for semantic search")
-                    st.info(f"📝 Total characters: {len(text)}")
+                    st.success(f"Processed! {len(chunks)} chunks created")
                 except Exception as e:
-                    # show error message if something goes wrong
-                    st.error(f"❌ Error: {e}")
+                    st.error(f"Error: {e}")
     
-    # divider line
     st.divider()
     
-    # language selection section
-    st.header("🌐 Language")
-    language = st.selectbox(
-        "Choose your language",
-        list(LANGUAGES.keys())
-    )
+    st.header("Language")
+    language = st.selectbox("Choose language", list(LANGUAGES.keys()))
     
-    # divider line
     st.divider()
     
-    # studio features section
-    st.header("🎨 Studio")
+    st.header("Studio")
     
-    # check if PDF is uploaded
     if st.session_state.pdf_text:
-        # MCQ generation button
-        if st.button("📝 Generate MCQs"):
-            with st.spinner("Creating questions..."):
+        if st.button("Generate MCQs (JSON)"):
+            with st.spinner("Creating JSON MCQs..."):
                 try:
-                    # generate MCQs
-                    mcqs = create_mcqs(st.session_state.pdf_text, language)
-                    
-                    # store MCQs in session state
+                    mcqs = create_mcqs_json(st.session_state.pdf_text, language)
                     st.session_state.mcqs = mcqs
-                    
-                    # show success message
-                    st.success(f"✅ Generated {len(mcqs)} questions!")
+                    st.success(f"{len(mcqs)} questions created!")
                 except Exception as e:
-                    # show error message
-                    st.error(f"❌ Error: {e}")
+                    st.error(f"Error: {e}")
         
-        # audio summary button
-        if st.button("🔊 Generate Audio Summary"):
+        if st.button("Generate Audio"):
             with st.spinner("Creating audio..."):
                 try:
-                    # generate audio summary
-                    audio, summary_text = create_audio_summary(st.session_state.pdf_text, language)
-                    
+                    audio, text = create_audio_summary(st.session_state.pdf_text, language)
                     if audio:
-                        # store audio in session state so it persists
                         st.session_state.audio = audio
-                        st.session_state.audio_summary_text = summary_text
-                        
-                        # show success message
-                        st.success("✅ Audio summary created!")
-                    else:
-                        st.error("❌ Failed to create audio")
+                        st.session_state.audio_text = text
+                        st.success("Audio ready!")
                 except Exception as e:
-                    # show error message
-                    st.error(f"❌ Error: {e}")
+                    st.error(f"Error: {e}")
     else:
-        # show info message if no PDF uploaded
-        st.info("📤 Please upload and process a PDF first")
+        st.info("Upload PDF first")
     
-    # divider
     st.divider()
     
-    # display audio player if audio exists
     if st.session_state.audio:
-        st.subheader("🎧 Audio Summary")
+        st.subheader("Audio Summary")
         st.audio(st.session_state.audio, format="audio/mp3")
-        
-        # show summary text in expander
-        if st.session_state.audio_summary_text:
-            with st.expander("📄 View Summary Text"):
-                st.write(st.session_state.audio_summary_text)
+        if st.session_state.audio_text:
+            with st.expander("View Text"):
+                st.write(st.session_state.audio_text)
 
-# main content area
-# check if PDF is uploaded
+# Main area
 if st.session_state.vector_store:
-    # show LangChain badge
-    st.markdown('<span class="feature-badge">🔗 LangChain RAG Active</span>', unsafe_allow_html=True)
+    st.header("Ask Questions")
     
-    # chat section header
-    st.header("💬 Ask Questions")
-    st.caption("Using LangChain's semantic search for accurate answers")
-    
-    # display chat history
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
-            # show sources if available
             if "sources" in msg and msg["sources"]:
-                with st.expander("📚 View Sources"):
+                with st.expander("View Sources with Page Numbers"):
                     for i, source in enumerate(msg["sources"], 1):
-                        st.caption(f"**Source {i}:** {source[:200]}...")
+                        page_num = source.metadata.get("page", "Unknown")
+                        st.caption(f"**Page {page_num}:** {source.page_content[:200]}...")
     
-    # chat input box
-    question = st.chat_input("Ask a question about your PDF...")
+    question = st.chat_input("Ask about your PDF...")
     
-    # if user enters a question
     if question:
-        # display user message
         with st.chat_message("user"):
             st.write(question)
         
-        # add user message to chat history
         st.session_state.chat_history.append({
             "role": "user",
             "content": question
         })
         
-        # get AI response using LangChain
         with st.chat_message("assistant"):
-            with st.spinner("Thinking with LangChain..."):
+            with st.spinner("Thinking..."):
                 try:
-                    # get answer from LangChain RAG
                     answer, sources = ask_question_langchain(
                         question,
                         st.session_state.vector_store,
                         language
                     )
                     
-                    # display answer
                     st.write(answer)
                     
-                    # display sources
                     if sources:
-                        with st.expander("📚 View Sources"):
+                        with st.expander("View Sources with Page Numbers"):
                             for i, source in enumerate(sources, 1):
-                                st.caption(f"**Source {i}:** {source.page_content[:200]}...")
+                                page_num = source.metadata.get("page", "Unknown")
+                                st.caption(f"**Page {page_num}:** {source.page_content[:200]}...")
                     
-                    # add assistant message to chat history
                     st.session_state.chat_history.append({
                         "role": "assistant",
                         "content": answer,
-                        "sources": [s.page_content for s in sources]
+                        "sources": sources
                     })
                 except Exception as e:
-                    # show error message
-                    st.error(f"❌ Error: {e}")
+                    st.error(f"Error: {e}")
     
-    # display MCQs if generated
     if st.session_state.mcqs:
-        # divider line
         st.divider()
+        st.header("Practice Questions (JSON Format)")
         
-        # MCQs section header
-        st.header("📝 Practice Questions")
-        
-        # loop through each MCQ
         for i, mcq in enumerate(st.session_state.mcqs, 1):
-            # create expandable section for each question
-            with st.expander(f"Question {i}: {mcq['question'][:50]}..."):
-                # display question
+            with st.expander(f"Q{i}: {mcq['question'][:50]}..."):
                 st.write(f"**{mcq['question']}**")
                 st.write("")
-                
-                # display all options
-                for j, option in enumerate(mcq['options']):
-                    st.write(f"{chr(65+j)}) {option}")
-                
-                # display correct answer
+                for opt in mcq['options']:
+                    st.write(opt)
                 st.write("")
-                st.info(f"✅ Correct Answer: {mcq['answer']}")
+                st.info(f"Correct Answer: {mcq['correct_answer']}")
+                if mcq.get('explanation'):
+                    st.caption(f"Explanation: {mcq['explanation']}")
 
 else:
-    # landing page when no PDF is uploaded
-    st.header("🎓 Welcome to BharatLearn AI - Enhanced Edition")
+    # Professional Landing Page
+    st.markdown("### Welcome to BharatLearn AI")
+    st.markdown("An intelligent platform for multilingual learning from PDF documents.")
     
-    st.markdown("""
-    ### ✨ New Features with LangChain:
-    """)
+    st.markdown("<br>", unsafe_allow_html=True)
     
-    # create three columns
-    col1, col2, col3 = st.columns(3)
-    
-    # column 1 - Semantic Search
-    with col1:
-        st.markdown("""
-        ### 🔍 Semantic Search
-        - Intelligent text chunking
-        - Vector embeddings
-        - Find relevant context
-        """)
-    
-    # column 2 - Better RAG
-    with col2:
-        st.markdown("""
-        ### 🎯 Enhanced RAG
-        - Source citations
-        - Context-aware answers
-        - Improved accuracy
-        """)
-    
-    # column 3 - Scalable
-    with col3:
-        st.markdown("""
-        ### 📈 Production Ready
-        - FAISS vector store
-        - Efficient retrieval
-        - Scalable architecture
-        """)
-    
-    st.divider()
-    
-    st.markdown("""
-    ### 🌟 Core Features:
-    """)
-    
+    # Feature boxes
     col1, col2, col3 = st.columns(3)
     
     with col1:
         st.markdown("""
-        ### 📚 Upload PDF
-        Upload your study material
-        """)
+        <div class="feature-box">
+            <h3>PDF Analysis</h3>
+            <p>Upload educational PDFs and get instant access to intelligent question-answering powered by AI.</p>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col2:
         st.markdown("""
-        ### 💬 Ask Questions
-        Get answers in 5 languages
-        """)
+        <div class="feature-box">
+            <h3>Multilingual Support</h3>
+            <p>Learn in English, Hindi, Tamil, Telugu, or Marathi. Choose your preferred language.</p>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col3:
         st.markdown("""
-        ### 🎨 Practice
-        MCQs and audio summaries
-        """)
+        <div class="feature-box">
+            <h3>Practice Tools</h3>
+            <p>Generate MCQs for practice and audio summaries for efficient revision.</p>
+        </div>
+        """, unsafe_allow_html=True)
     
-    # instruction message
-    st.info("👆 Upload a PDF file from the sidebar to get started")
-    
-    # show tech stack
-    st.divider()
+    # Getting started box
     st.markdown("""
-    ### 🛠️ Tech Stack:
-    **LangChain** • **Google Gemini** • **FAISS** • **Streamlit** • **Python**
-    """)
+    <div class="info-box">
+        <strong>Getting Started:</strong> Upload a PDF document from the sidebar to begin.
+    </div>
+    """, unsafe_allow_html=True)
