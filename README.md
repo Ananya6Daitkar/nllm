@@ -109,8 +109,6 @@ bharatlearn-ai/
 ├── .env                       # API keys (create this)
 ├── .env.example               # Environment template
 ├── README.md                  # This file
-├── SETUP.md                   # Setup guide
-├── INTERVIEW_GUIDE.md         # Interview preparation
 └── RESUME_GUIDE.md            # Resume guidance
 ```
 
@@ -138,15 +136,12 @@ bharatlearn-ai/
 
 ---
 
-## Documentation
-
-- **[SETUP.md](SETUP.md)** - Detailed installation guide
-
-
----
-
 ## Troubleshooting
 
+**Audio not playing?**
+- Use Chrome browser
+- Check volume settings
+- Audio player is in the sidebar
 
 **API errors?**
 ```bash
