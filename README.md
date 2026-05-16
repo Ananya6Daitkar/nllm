@@ -50,7 +50,7 @@ Get your free API key: https://makersuite.google.com/app/apikey
 │                     BharatLearn AI Workflow                  │
 └─────────────────────────────────────────────────────────────┘
 
-    📄 Upload PDF
+    Upload PDF
          │
          ▼
     ┌─────────────┐
@@ -108,8 +108,7 @@ bharatlearn-ai/
 ├── requirements_langchain.txt # LangChain dependencies
 ├── .env                       # API keys (create this)
 ├── .env.example               # Environment template
-├── README.md                  # This file
-└── RESUME_GUIDE.md            # Resume guidance
+└── README.md                  # This file
 ```
 
 ---
@@ -118,7 +117,7 @@ bharatlearn-ai/
 
 | Version | Best For | Features |
 |---------|----------|----------|
-| **app_simple.py** ⭐ | Learning, Interviews | Clean code, 5 dependencies |
+| **app_simple.py** | Learning, Interviews | Clean code, 5 dependencies |
 | **app.py** | Understanding basics | Original implementation |
 | **app_with_langchain.py** | Production | Semantic search, **ChromaDB**, source citations |
 
@@ -175,5 +174,4 @@ pip install -r requirements.txt --force-reinstall
 
 MIT License - Free to use and modify
 
-
-**Made for Indian learners** 🇮🇳
+**Made for Indian learners**
