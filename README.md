@@ -120,7 +120,7 @@ bharatlearn-ai/
 
 | Version | Best For | Features |
 |---------|----------|----------|
-| **app_simple.py** ⭐ | Learning, Interviews | Clean code, 5 dependencies |
+| **app_simple.py**  | Learning, Interviews | Clean code, 5 dependencies |
 | **app.py** | Understanding basics | Original implementation |
 | **app_with_langchain.py** | Production | Semantic search, FAISS, source citations |
 
@@ -141,17 +141,12 @@ bharatlearn-ai/
 ## Documentation
 
 - **[SETUP.md](SETUP.md)** - Detailed installation guide
-- **[INTERVIEW_GUIDE.md](INTERVIEW_GUIDE.md)** - Interview preparation
-- **[RESUME_GUIDE.md](RESUME_GUIDE.md)** - How to add this to your resume
+
 
 ---
 
 ## Troubleshooting
 
-**Audio not playing?**
-- Use Chrome browser
-- Check volume settings
-- Audio player is in the sidebar
 
 **API errors?**
 ```bash
