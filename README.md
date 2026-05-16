@@ -46,43 +46,27 @@ Get your free API key: https://makersuite.google.com/app/apikey
 ## How It Works
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     BharatLearn AI Workflow                  │
-└─────────────────────────────────────────────────────────────┘
-
-    Upload PDF
-         │
-         ▼
-    ┌─────────────┐
-    │   PyPDF2    │  Extract text from PDF
-    └──────┬──────┘
-           │
-           ▼
-    ┌─────────────┐
-    │   Storage   │  Store in session state
-    └──────┬──────┘
-           │
-           ├──────────────┬──────────────┬──────────────┐
-           │              │              │              │
-           ▼              ▼              ▼              ▼
-    ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
-    │   Q&A    │   │   MCQ    │   │  Audio   │   │ Language │
-    │          │   │ Generate │   │ Summary  │   │  Select  │
-    └────┬─────┘   └────┬─────┘   └────┬─────┘   └────┬─────┘
-         │              │              │              │
-         └──────────────┴──────────────┴──────────────┘
-                        │
-                        ▼
-              ┌──────────────────┐
-              │  Google Gemini   │  AI Processing
-              │      API         │
-              └────────┬─────────┘
+┌─────────────────────────────────────────────────────┐
+│                  STREAMLIT FRONTEND                  │
+│  [Upload PDF] [Select Language] [Ask Question]      │
+└──────────────────────┬──────────────────────────────┘
                        │
-                       ▼
-              ┌──────────────────┐
-              │  Response in     │  English, Hindi,
-              │  Your Language   │  Tamil, Telugu,
-              └──────────────────┘  or Marathi
+┌──────────────────────▼──────────────────────────────┐
+│               LANGCHAIN ORCHESTRATION               │
+│  PDF Loader → Text Splitter → Retrieval Chain       │
+└──────┬───────────────┬───────────────────┬──────────┘
+       │               │                   │
+┌──────▼──────┐ ┌──────▼──────┐ ┌─────────▼────────┐
+│   PyPDF2    │ │  ChromaDB   │ │   Gemini 1.5      │
+│ (PDF Text   │ │ (Vector     │ │   Flash API       │
+│  Extraction)│ │  Storage +  │ │ (Answer/MCQ/Audio │
+└─────────────┘ │  Retrieval) │ │  Script Gen)      │
+                └─────────────┘ └──────────┬────────┘
+                                           │
+                                ┌────────▼────────┐
+                                │      gTTS       │
+                                │ (Text → MP3)    │
+                                └─────────────────┘
 ```
 
 ---
